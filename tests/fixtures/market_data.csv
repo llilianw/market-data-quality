@@ -1,0 +1,4 @@
+contract_symbol,timestamp_chicago_wall,open,high,low,close,volume,source_note
+ESZ6,2026-01-05 10:31:00,100.0,101.0,99.0,100.5,10,original
+ESZ6,2026-01-05 10:32:00,100.0,100.0,100.0,100.0,0,no_range
+NQZ6,2026-01-05 10:33:00,90.0,89.0,91.0,90.0,-1,unvalidated
