@@ -19,7 +19,6 @@ class AnalyticsConfig:
     """Daily boundary and approximate bar-VWAP settings."""
 
     vwap_window: str = "15min"
-    vwap_price_basis: Literal["typical", "close"] = "typical"
     daily_boundary: Literal["session", "calendar"] = "session"
 
 

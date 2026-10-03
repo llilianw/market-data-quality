@@ -23,7 +23,7 @@
 ## Analytics
 - Generate session-based daily OHLCV.
 - Calculate rolling 15-minute VWAP using a time-based window.
-- Use typical price `(H + L + C) / 3` as the default bar-price proxy.
+- Use typical price `(H + L + C) / 3` as the fixed bar-price proxy.
 - Return unavailable/NaN VWAP when rolling volume is zero.
 - Never mix contracts or sessions in rolling calculations.
 

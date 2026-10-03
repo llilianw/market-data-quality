@@ -14,7 +14,6 @@ def test_defaults_match_declared_assumptions() -> None:
     assert config.session.session_start == time(17)
     assert config.session.session_end == time(16)
     assert config.analytics.vwap_window == "15min"
-    assert config.analytics.vwap_price_basis == "typical"
     assert config.analytics.daily_boundary == "session"
     assert config.quality.expected_frequency == "1min"
     assert config.quality.detect_outliers is False
@@ -36,7 +35,7 @@ def test_configuration_is_immutable(config, attribute, value) -> None:
 
 def test_app_composes_custom_settings() -> None:
     session = SessionConfig("Europe/London", time(8), time(17))
-    analytics = AnalyticsConfig("30min", "close", "calendar")
+    analytics = AnalyticsConfig(vwap_window="30min", daily_boundary="calendar")
     quality = QualityConfig("5min", True)
     config = AppConfig(session=session, analytics=analytics, quality=quality)
     assert config.session is session
