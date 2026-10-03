@@ -1,0 +1,53 @@
+{
+  "schema_version": "public-futures-sample-v1",
+  "source_bar_columns": {
+    "t": "timestamp",
+    "o": "open",
+    "h": "high",
+    "l": "low",
+    "c": "close",
+    "v": "volume when available",
+    "oi": "open interest in daily files when available"
+  },
+  "minute": {
+    "columns": [
+      "root_id",
+      "exchange",
+      "root",
+      "contract_symbol",
+      "timestamp_ms",
+      "timestamp_chicago_wall",
+      "trading_date",
+      "minute_of_day",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume"
+    ],
+    "timestamp_semantics": {
+      "timestamp_ms": "Original integer unchanged. It encodes America/Chicago wall-clock components and is not a true UTC instant.",
+      "timestamp_chicago_wall": "Timezone-naive timestamp containing the intended America/Chicago wall-clock components."
+    }
+  },
+  "daily": {
+    "columns": [
+      "root_id",
+      "exchange",
+      "root",
+      "contract_symbol",
+      "timestamp_ms",
+      "date",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume",
+      "open_interest"
+    ],
+    "timestamp_semantics": {
+      "timestamp_ms": "Unix-millisecond date label at 00:00:00 UTC.",
+      "date": "Calendar date derived from timestamp_ms."
+    }
+  }
+}
