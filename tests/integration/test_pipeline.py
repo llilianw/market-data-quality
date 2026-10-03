@@ -73,6 +73,14 @@ def test_end_to_end_assessment_drives_both_analytics_without_mutating_input(
     assert result.gaps.loc[0, "gap_start"] == pd.Timestamp("2026-01-05T16:32:00Z")
     assert result.gaps.loc[0, "gap_end"] == pd.Timestamp("2026-01-05T16:32:00Z")
     assert result.gaps.loc[0, "missing_count"] == 1
+    assert result.insights["category"].tolist() == ["quality", "completeness", "quality"]
+    assert result.insights["severity"].tolist() == ["error", "warning", "warning"]
+    assert result.insights["contract"].tolist() == ["ESZ6"] * 3
+    assert result.insights.loc[0, "rule_id"] == RuleId.NEGATIVE_VOLUME.value
+    assert pd.isna(result.insights.loc[1, "rule_id"])
+    assert result.insights.loc[2, "rule_id"] == RuleId.EXACT_DUPLICATE.value
+    assert result.insights["evidence_count"].tolist() == [1, 1, 2]
+    assert result.insights["affected_sessions"].tolist() == [1, 1, 1]
 
     assert len(result.daily_ohlcv) == 1
     bar = result.daily_ohlcv.iloc[0]
@@ -102,6 +110,11 @@ def test_analytics_scope_does_not_erase_full_dataset_evidence(canonical: pd.Data
     assert outside["rule_id"].tolist() == [RuleId.NEGATIVE_VOLUME.value]
     assert "NQZ6" in result.exclusions["contract"].tolist()
     assert set(result.gaps["contract"]) == {"ESZ6", "NQZ6"}
+    outside_insights = result.insights.loc[
+        (result.insights["contract"] == "NQZ6")
+        & (result.insights["rule_id"] == RuleId.NEGATIVE_VOLUME.value)
+    ]
+    assert outside_insights["evidence_count"].tolist() == [1]
     assert result.daily_ohlcv["contract"].tolist() == ["ESZ6"]
     assert result.daily_ohlcv["bar_count"].tolist() == [len(result.scoped_data)]
     assert result.daily_ohlcv["volume"].tolist() == [10]
@@ -117,7 +130,14 @@ def test_empty_contract_selection_preserves_full_dataset_assessment(
     assert result.scoped_data.empty
     assert result.daily_ohlcv.empty
     assert result.rolling_vwap.empty
-    for field in ("enriched_data", "quality_issues", "gaps", "exclusions", "eligible_data"):
+    for field in (
+        "enriched_data",
+        "quality_issues",
+        "gaps",
+        "insights",
+        "exclusions",
+        "eligible_data",
+    ):
         expected = getattr(unrestricted, field)
         assert not expected.empty
         assert_frame_equal(getattr(result, field), expected)
@@ -154,6 +174,7 @@ def test_empty_canonical_input_flows_through_normal_stages(canonical: pd.DataFra
         result.enriched_data,
         result.quality_issues,
         result.gaps,
+        result.insights,
         result.exclusions,
         result.eligible_data,
         result.scoped_data,
@@ -171,6 +192,8 @@ def test_empty_canonical_input_flows_through_normal_stages(canonical: pd.DataFra
     assert result.quality_issues["blocking"].dtype == bool
     assert result.quality_issues["timestamp_utc"].dtype == data["timestamp_utc"].dtype
     assert result.gaps["gap_start"].dtype == data["timestamp_utc"].dtype
+    assert result.insights["evidence_count"].dtype == "int64"
+    assert result.insights["affected_sessions"].dtype == "int64"
     assert result.exclusions["timestamp_utc"].dtype == data["timestamp_utc"].dtype
     assert_frame_equal(result.eligible_data, result.enriched_data)
     assert_frame_equal(result.scoped_data, result.eligible_data)

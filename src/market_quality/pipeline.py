@@ -10,6 +10,7 @@ from market_quality.analytics.filtering import filter_analysis_scope
 from market_quality.analytics.ohlcv import aggregate_daily_ohlcv
 from market_quality.analytics.vwap import compute_rolling_vwap
 from market_quality.config import AppConfig
+from market_quality.insights.engine import generate_quality_insights
 from market_quality.quality.duplicates import detect_duplicates
 from market_quality.quality.eligibility import build_analytical_view
 from market_quality.quality.gaps import detect_gaps
@@ -24,6 +25,7 @@ class AnalysisResult:
     enriched_data: pd.DataFrame
     quality_issues: pd.DataFrame
     gaps: pd.DataFrame
+    insights: pd.DataFrame
     exclusions: pd.DataFrame
     eligible_data: pd.DataFrame
     scoped_data: pd.DataFrame
@@ -55,6 +57,7 @@ def run_analysis(
         .reset_index(drop=True)
     )
     gaps = detect_gaps(enriched, config.session, config.quality)
+    insights = generate_quality_insights(enriched, issues, gaps)
     analytical = build_analytical_view(enriched, issues)
     scoped = filter_analysis_scope(analytical.data, contracts, start_date, end_date)
     daily_ohlcv = aggregate_daily_ohlcv(scoped, config.analytics)
@@ -63,6 +66,7 @@ def run_analysis(
         enriched_data=enriched,
         quality_issues=issues,
         gaps=gaps,
+        insights=insights,
         exclusions=analytical.exclusions,
         eligible_data=analytical.data,
         scoped_data=scoped,
