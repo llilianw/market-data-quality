@@ -5,19 +5,7 @@ import pandas as pd
 from market_quality.constants import OHLC_COLUMNS
 from market_quality.exceptions import SchemaValidationError
 from market_quality.models import RuleId, Severity
-
-_ISSUE_COLUMNS = (
-    "rule_id",
-    "severity",
-    "blocking",
-    "source_file",
-    "source_row",
-    "contract",
-    "timestamp_utc",
-    "field",
-    "actual_value",
-    "message",
-)
+from market_quality.quality.constants import ISSUE_COLUMNS
 
 
 def validate_row_quality(data: pd.DataFrame) -> pd.DataFrame:
@@ -53,7 +41,7 @@ def validate_row_quality(data: pd.DataFrame) -> pd.DataFrame:
             else source.loc[mask, field].astype(object)
         )
         frame["message"] = message
-        issue_frames.append(frame.loc[:, _ISSUE_COLUMNS])
+        issue_frames.append(frame.loc[:, ISSUE_COLUMNS])
 
     for field in required:
         add_issues(
@@ -87,7 +75,7 @@ def validate_row_quality(data: pd.DataFrame) -> pd.DataFrame:
     return (
         pd.concat(issue_frames, ignore_index=True)
         if issue_frames
-        else pd.DataFrame(columns=_ISSUE_COLUMNS).astype(
+        else pd.DataFrame(columns=ISSUE_COLUMNS).astype(
             {"blocking": bool, "timestamp_utc": data["timestamp_utc"].dtype}
         )
     )
