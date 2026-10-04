@@ -7,7 +7,6 @@ from market_quality.analytics.vwap import compute_rolling_vwap
 from market_quality.config import AppConfig
 from market_quality.exceptions import MarketDataError
 from market_quality.ingestion.normalize import CanonicalizationResult
-from market_quality.models import GapClassification
 from market_quality.pipeline import AnalysisResult
 from market_quality.ui.analytics import render_analytics
 from market_quality.ui.assessment import render_assessment
@@ -27,12 +26,12 @@ def main() -> None:
     st.set_page_config(page_title="Market Data Quality", layout="wide")
     st.title("Market Data Quality & Analytics")
     st.write(
-        "Upload CSV or Parquet market bars to assess the full dataset, then select "
-        "contracts and trading session dates for analytics."
+        "Inspect historical futures OHLCV data, identify quality and completeness "
+        "evidence, and explore trading-session and intraday analytics."
     )
     uploaded = st.file_uploader("Market-data file", type=["csv", "parquet"])
     if uploaded is None:
-        st.info("Upload a market-data file to begin.")
+        st.info("Upload a CSV or Parquet market-data file to begin.")
         return
 
     config = AppConfig()
@@ -40,37 +39,57 @@ def main() -> None:
         canonical, assessment = assess_upload(uploaded.getvalue(), uploaded.name, config)
     except (MarketDataError, ValueError) as exc:
         st.error(f"Could not process the uploaded file: {exc}")
+        st.info("Check the source file and upload a corrected CSV or Parquet file to continue.")
         return
 
-    st.success("Dataset assessment complete.")
-    unexpected_count = assessment.gaps["classification"].eq(GapClassification.UNEXPECTED_GAP).sum()
+    st.subheader("Dataset overview")
+    st.write("Uploaded file:", uploaded.name)
+    st.success("Ingestion and assessment complete.")
     metrics = [
-        ("Source rows", len(canonical.data) + len(canonical.rejected_rows)),
-        ("Canonical rows", len(canonical.data)),
-        ("Rejected rows", len(canonical.rejected_rows)),
-        ("Quality issues", len(assessment.quality_issues)),
-        ("Unexpected gap intervals", unexpected_count),
-        ("Eligible observations", len(assessment.eligible_data)),
+        ("Source rows", len(canonical.data) + len(canonical.rejected_rows), None),
+        (
+            "Canonical rows",
+            len(canonical.data),
+            "Parsed observations; they may still have quality defects.",
+        ),
+        ("Rejected rows", len(canonical.rejected_rows), "Rows rejected during ingestion parsing."),
+        (
+            "Eligible observations",
+            len(assessment.eligible_data),
+            "Observations retained after blocking findings and exact-duplicate policy.",
+        ),
+        (
+            "Contracts",
+            assessment.enriched_data["contract"].nunique(),
+            "Distinct canonical contracts.",
+        ),
+        (
+            "Observed sessions",
+            assessment.enriched_data["session_date"].nunique(),
+            "Distinct non-null trading-session closing dates in the canonical dataset.",
+        ),
     ]
     for offset in (0, 3):
-        for column, (label, value) in zip(st.columns(3), metrics[offset : offset + 3], strict=True):
-            column.metric(label, f"{value:,}")
+        for column, (label, value, help_text) in zip(
+            st.columns(3), metrics[offset : offset + 3], strict=True
+        ):
+            column.metric(label, f"{value:,}", help=help_text)
     st.caption(
-        f"Unexpected gaps are missing expected timestamps under the configured "
-        f"{config.quality.expected_frequency} cadence and {config.session.timezone} "
-        f"overnight trading-session schedule "
-        f"({config.session.session_start:%H:%M}–{config.session.session_end:%H:%M}). "
-        "They do not prove that source records were lost."
+        "Quality assessment covers the full uploaded dataset. "
+        "Contract and date controls scope analytics only."
     )
 
     if canonical.data.empty:
         st.info(
-            "All source observations were rejected during ingestion."
+            "All source observations were rejected during ingestion. "
+            "Review timestamps and numeric values, then upload a corrected file."
             if not canonical.rejected_rows.empty
-            else "The uploaded file contains no observations."
+            else "The uploaded file contains no observations. Upload a file with market-data rows."
         )
     elif assessment.eligible_data.empty:
-        st.info("No observations are eligible for analytics. Full assessment evidence is retained.")
+        st.info(
+            "No observations are eligible for analytics. Review the quality and exclusion evidence below."
+        )
     else:
         _render_analytics_scope(assessment.eligible_data, config)
 
@@ -118,20 +137,20 @@ def _render_analytics_scope(eligible: pd.DataFrame, config: AppConfig) -> None:
     scoped = filter_analysis_scope(eligible, contract_scope, start, end)
     daily = aggregate_daily_ohlcv(scoped, config.analytics)
     rolling = compute_rolling_vwap(scoped, config.analytics)
-    st.subheader("Scoped analytics")
     for column, (label, value) in zip(
         st.columns(3),
         [
             ("Scoped observations", len(scoped)),
-            ("Daily OHLCV bars", len(daily)),
-            ("Rolling VWAP observations", len(rolling)),
+            ("Scoped contracts", scoped["contract"].nunique()),
+            ("Scoped sessions", scoped["session_date"].nunique()),
         ],
         strict=True,
     ):
         column.metric(label, f"{value:,}")
     if scoped.empty:
         st.info(
-            "No eligible observations match this selection. Full assessment evidence is retained."
+            "No eligible observations match this selection. "
+            "Select a contract or adjust the session-date range to view analytics."
         )
         return
 

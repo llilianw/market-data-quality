@@ -38,7 +38,13 @@ def render_analytics(
     if not contracts:
         st.info("No contracts are available in the current analytics scope.")
         return
-    contract = contracts[0] if len(contracts) == 1 else st.selectbox("Chart contract", contracts)
+    contract = (
+        contracts[0]
+        if len(contracts) == 1
+        else st.selectbox(
+            "Chart contract", contracts, help="Choose which scoped contract to display."
+        )
+    )
     daily = daily_ohlcv.loc[daily_ohlcv["contract"].eq(contract)]
     intraday = rolling_vwap.loc[rolling_vwap["contract"].eq(contract)]
     daily_tab, intraday_tab = st.tabs(["Daily market view", "Intraday VWAP"])
@@ -76,10 +82,28 @@ def render_analytics(
             figure.update_xaxes(title_text="Trading session closing date", row=2, col=1)
             st.plotly_chart(figure)
             st.caption(
-                "Bar count describes observed coverage, not guaranteed session completeness."
+                "Bar counts describe contributing observations, not guaranteed session completeness. "
+                "Coverage timestamps are shown in UTC."
             )
             with st.expander("View daily OHLCV data"):
-                st.dataframe(daily, hide_index=True)
+                st.dataframe(
+                    daily,
+                    hide_index=True,
+                    column_config={
+                        "contract": "Contract",
+                        "session_date": st.column_config.DateColumn(
+                            "Session closing date", format="YYYY-MM-DD"
+                        ),
+                        "open": "Open",
+                        "high": "High",
+                        "low": "Low",
+                        "close": "Close",
+                        "volume": "Volume",
+                        "bar_count": "Observed bars",
+                        "first_timestamp": "First observed (UTC)",
+                        "last_timestamp": "Last observed (UTC)",
+                    },
+                )
 
     with intraday_tab:
         if intraday.empty:
@@ -89,7 +113,9 @@ def render_analytics(
         if not sessions:
             st.info("No trading session dates are available for this contract.")
             return
-        session = st.selectbox("Trading session", sessions)
+        session = st.selectbox(
+            "Trading session", sessions, format_func=lambda value: value.isoformat()
+        )
         observations = intraday.loc[intraday["session_date"].eq(pd.Timestamp(session))]
         if observations.empty:
             st.info("No VWAP observations are available for this trading session.")
@@ -121,9 +147,9 @@ def render_analytics(
         )
         st.plotly_chart(figure)
         st.caption(
-            f"Rolling VWAP is a {window} bar-based approximation using Typical Price "
-            "(High + Low + Close) / 3 and observed volume. True trade-level VWAP cannot "
-            "be recovered from OHLCV bars. Only observed bars are plotted."
+            f"Rolling {window} VWAP is a bar-based approximation using Typical Price "
+            "(High + Low + Close) / 3 and observed volume within each trading session. "
+            "OHLCV bars cannot recover true trade-level VWAP. Missing bars are not interpolated."
         )
         with st.expander("View intraday VWAP data"):
             columns = [
@@ -136,4 +162,19 @@ def render_analytics(
                 "rolling_volume",
                 "vwap",
             ]
-            st.dataframe(observations.loc[:, columns], hide_index=True)
+            st.dataframe(
+                observations.loc[:, columns],
+                hide_index=True,
+                column_config={
+                    "contract": "Contract",
+                    "session_date": st.column_config.DateColumn(
+                        "Session closing date", format="YYYY-MM-DD"
+                    ),
+                    time_column: f"Market timestamp ({timezone})",
+                    "close": "Close",
+                    "volume": "Volume",
+                    "representative_price": "Typical Price",
+                    "rolling_volume": "Window volume",
+                    "vwap": f"Rolling {window} VWAP",
+                },
+            )

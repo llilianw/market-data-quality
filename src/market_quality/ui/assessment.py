@@ -16,7 +16,6 @@ def render_assessment(assessment: AnalysisResult, config: AppConfig) -> None:
     excluded_count = len(exclusions.loc[:, ["source_file", "source_row"]].drop_duplicates())
 
     st.subheader("Data Quality")
-    st.caption("Full assessed uploaded dataset; analytics contract/date filters do not apply.")
     for column, (label, value) in zip(
         st.columns(3),
         [
@@ -28,8 +27,8 @@ def render_assessment(assessment: AnalysisResult, config: AppConfig) -> None:
     ):
         column.metric(label, f"{value:,}")
     st.caption(
-        "Quality issues counts finding rows; unexpected gaps counts intervals; "
-        "excluded observations counts distinct source_file/source_row pairs."
+        "Issue totals count findings, which can share an observation. Gap totals count intervals. "
+        "Exclusions count distinct source observations."
     )
 
     st.markdown("**Row-level and duplicate issues**")
@@ -42,7 +41,16 @@ def render_assessment(assessment: AnalysisResult, config: AppConfig) -> None:
             .rename("issue_count")
             .reset_index()
         )
-        st.dataframe(breakdown, hide_index=True)
+        st.dataframe(
+            breakdown,
+            hide_index=True,
+            column_config={
+                "rule_id": "Rule",
+                "severity": "Severity",
+                "blocking": "Blocks analytics",
+                "issue_count": "Findings",
+            },
+        )
         with st.expander("View detailed quality issues"):
             details = issues.loc[
                 :,
@@ -61,13 +69,30 @@ def render_assessment(assessment: AnalysisResult, config: AppConfig) -> None:
             ].copy()
             # Arrow tables need a uniform display representation for scalar/dictionary evidence.
             details["actual_value"] = details["actual_value"].map(str)
-            st.dataframe(details, hide_index=True)
+            st.dataframe(
+                details,
+                hide_index=True,
+                column_config={
+                    "rule_id": "Rule",
+                    "severity": "Severity",
+                    "blocking": "Blocks analytics",
+                    "contract": "Contract",
+                    "timestamp_utc": "Timestamp (UTC)",
+                    "field": "Field",
+                    "actual_value": "Evidence",
+                    "message": "Diagnostic",
+                    "source_file": "Source file",
+                    "source_row": "Source row (zero-based)",
+                },
+            )
 
     st.markdown("**Unexpected gaps**")
     st.caption(
         "Unexpected gaps are timestamps missing under the configured "
         f"{config.quality.expected_frequency} cadence and {config.session.timezone} "
-        "trading-session model. They do not prove source records were lost. "
+        "overnight trading-session model "
+        f"({config.session.session_start:%H:%M}–{config.session.session_end:%H:%M}). "
+        "They do not prove source records were lost. "
         "Scheduled closures are informational and excluded from this defect view."
     )
     if unexpected.empty:
@@ -92,7 +117,15 @@ def render_assessment(assessment: AnalysisResult, config: AppConfig) -> None:
             ],
             hide_index=True,
             column_config={
-                "missing_count": st.column_config.NumberColumn("Missing expected timestamps")
+                "contract": "Contract",
+                "session_date": st.column_config.DateColumn(
+                    "Session closing date", format="YYYY-MM-DD"
+                ),
+                "previous_timestamp": "Previous observed (UTC)",
+                "next_timestamp": "Next observed (UTC)",
+                "gap_start": "First missing (UTC)",
+                "gap_end": "Last missing (UTC)",
+                "missing_count": st.column_config.NumberColumn("Missing expected timestamps"),
             },
         )
 
@@ -114,11 +147,19 @@ def render_assessment(assessment: AnalysisResult, config: AppConfig) -> None:
                     ],
                 ],
                 hide_index=True,
+                column_config={
+                    "contract": "Contract",
+                    "timestamp_utc": "Timestamp (UTC)",
+                    "exclusion_reason": "Exclusion reason",
+                    "rule_id": "Rule",
+                    "source_file": "Source file",
+                    "source_row": "Source row (zero-based)",
+                },
             )
 
     st.subheader("Insights")
     st.caption(
-        "Deterministic summaries of full-dataset evidence. Recommendations are advisory; "
+        "Deterministic evidence summaries. Recommendations are advisory; "
         "completeness warnings do not exclude observations."
     )
     if assessment.insights.empty:
