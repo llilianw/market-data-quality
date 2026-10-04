@@ -81,8 +81,8 @@ def canonicalize_market_data(
 ) -> CanonicalizationResult:
     """Canonicalize a structural frame without applying market-value DQ rules.
 
-    Existing nulls remain canonical. Non-null parsing/localization failures yield
-    field-level issues and reject their row once, retaining the original evidence.
+    Existing nulls remain canonical. Non-null parsing/localization failures and
+    non-finite numbers reject their row once, retaining field-level source evidence.
     Timestamp representations must be homogeneous within the source column.
     """
     session_config = SessionConfig() if session_config is None else session_config
@@ -103,7 +103,10 @@ def canonicalize_market_data(
     issue_columns = ("source_file", "source_row", "field", "issue_type", "raw_value", "message")
     for field, values in converted.items():
         data["timestamp_utc" if field == "timestamp" else field] = values
-        malformed = source[field].notna() & values.isna()
+        invalid = values.isna()
+        if field != "timestamp":
+            invalid |= values.isin((float("inf"), float("-inf")))
+        malformed = source[field].notna() & invalid
         rejected |= malformed
         if not malformed.any():
             continue
@@ -116,7 +119,7 @@ def canonicalize_market_data(
         issues["message"] = (
             "Timestamp cannot be parsed or normalized to UTC without guessing DST"
             if field == "timestamp"
-            else f"Non-null {field} value cannot be parsed as numeric"
+            else f"Non-null {field} value cannot be parsed as finite numeric"
         )
         issue_frames.append(issues)
     return CanonicalizationResult(

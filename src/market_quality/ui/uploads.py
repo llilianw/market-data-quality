@@ -2,6 +2,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from market_quality.config import AppConfig
+from market_quality.exceptions import MarketDataError
 from market_quality.ingestion.normalize import (
     CanonicalizationResult,
     canonicalize_market_data,
@@ -21,7 +22,12 @@ def process_uploaded_data(
     with NamedTemporaryFile(suffix=Path(filename).suffix) as source:
         source.write(file_bytes)
         source.flush()
-        raw = read_market_data(source.name)
+        try:
+            raw = read_market_data(source.name)
+        except OSError as exc:
+            if Path(filename).suffix.lower() != ".parquet":
+                raise
+            raise MarketDataError(f"Could not read Parquet data: {exc}") from exc
 
     fields = resolve_market_fields(raw)
     normalized = normalize_market_fields(raw, fields, source_file=filename)

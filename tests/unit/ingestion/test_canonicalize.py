@@ -110,6 +110,36 @@ def test_existing_nulls_remain_canonical_without_ingestion_issues(normalized: pd
     assert result.rejected_rows.empty
 
 
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("open", "inf"),
+        ("high", float("inf")),
+        ("low", "-inf"),
+        ("close", "+inf"),
+        ("volume", float("inf")),
+    ],
+)
+def test_non_finite_numbers_are_rejected_but_source_nulls_remain(
+    normalized: pd.DataFrame, field: str, value: str | float
+) -> None:
+    normalized[field] = pd.Series([None, value, float(normalized.loc[2, field])])
+    before = normalized.copy(deep=True)
+
+    result = canonicalize_market_data(normalized)
+
+    assert result.data["source_row"].tolist() == [0, 2]
+    assert pd.isna(result.data.loc[0, field])
+    assert len(result.issues) == 1
+    issue = result.issues.iloc[0]
+    assert (issue.source_file, issue.source_row, issue.field) == ("sample.csv", 1, field)
+    assert issue.issue_type == "MALFORMED_NUMERIC"
+    assert issue.raw_value == value
+    assert "finite" in issue.message
+    assert_frame_equal(result.rejected_rows, normalized.iloc[[1]].reset_index(drop=True))
+    assert_frame_equal(normalized, before)
+
+
 @pytest.mark.parametrize("temporal", [pd.Timestamp("2026-01-05"), pd.Timedelta(days=1)])
 def test_temporal_numeric_values_reject_only_non_null_rows(
     normalized: pd.DataFrame, temporal: pd.Timestamp | pd.Timedelta

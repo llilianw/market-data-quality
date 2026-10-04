@@ -4,10 +4,13 @@ from unittest.mock import Mock
 
 import pandas as pd
 import pytest
+import streamlit as st
+from streamlit.testing.v1 import AppTest
 
 from market_quality.config import AppConfig, SessionConfig
 from market_quality.exceptions import SchemaValidationError, UnsupportedFileTypeError
 from market_quality.models import RuleId
+from market_quality.ui import uploads
 from market_quality.ui.uploads import process_uploaded_data
 
 _FIXTURE = Path(__file__).parents[2] / "fixtures" / "market_data.csv"
@@ -53,6 +56,63 @@ def test_upload_preserves_ingestion_issues_and_original_rejected_values() -> Non
     assert canonical.issues["issue_type"].tolist() == ["MALFORMED_NUMERIC"]
     assert canonical.issues["source_file"].tolist() == ["bars.csv"]
     assert assessment.enriched_data["source_row"].tolist() == [1]
+
+
+def test_non_finite_rows_cannot_reach_analytics_and_finite_negative_volume_reaches_dq() -> None:
+    contents = (
+        b"contract,timestamp,open,high,low,close,volume\n"
+        b"ESZ6,2026-01-05 10:31:00,100,inf,99,100.5,10\n"
+        b"ESZ6,2026-01-05 10:32:00,100,101,99,100.5,inf\n"
+        b"ESZ6,2026-01-05 10:33:00,100,101,99,100.5,-5\n"
+        b"ESZ6,2026-01-05 10:34:00,100,101,99,100.5,10\n"
+    )
+    canonical, assessment = process_uploaded_data(contents, "bars.csv", AppConfig())
+
+    assert canonical.data["source_row"].tolist() == [2, 3]
+    assert canonical.data["volume"].tolist() == [-5, 10]
+    assert canonical.rejected_rows["source_row"].tolist() == [0, 1]
+    assert canonical.rejected_rows.loc[0, "high"] == float("inf")
+    assert canonical.rejected_rows.loc[1, "volume"] == float("inf")
+    assert canonical.issues["issue_type"].tolist() == ["MALFORMED_NUMERIC"] * 2
+    assert canonical.issues["field"].tolist() == ["high", "volume"]
+    assert assessment.enriched_data["source_row"].tolist() == [2, 3]
+    assert assessment.quality_issues["rule_id"].tolist() == [RuleId.NEGATIVE_VOLUME.value]
+    assert assessment.quality_issues["source_row"].tolist() == [2]
+    assert assessment.quality_issues["blocking"].tolist() == [True]
+    assert assessment.exclusions["source_row"].tolist() == [2]
+    assert assessment.eligible_data["source_row"].tolist() == [3]
+    assert assessment.scoped_data["source_row"].tolist() == [3]
+    assert assessment.rolling_vwap["source_row"].tolist() == [3]
+    bar = assessment.daily_ohlcv.iloc[0]
+    assert (bar.high, bar.volume, bar.bar_count) == (101, 10, 1)
+    assert assessment.rolling_vwap["vwap"].tolist() == pytest.approx([(101 + 99 + 100.5) / 3])
+
+
+def test_parquet_read_oserror_renders_controlled_upload_error_without_assessment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.syspath_prepend(str(Path(__file__).parents[3]))
+    import app
+
+    upload = BytesIO(b"corrupt-parquet-data-page")
+    upload.name = "corrupt.parquet"
+    reader = Mock(side_effect=OSError("Deserializing page header failed"))
+    assessment = Mock()
+    monkeypatch.setattr(st, "file_uploader", lambda *args, **kwargs: upload)
+    monkeypatch.setattr(uploads, "read_market_data", reader)
+    monkeypatch.setattr(uploads, "run_analysis", assessment)
+    app.assess_upload.clear()
+    try:
+        view = AppTest.from_string("import app\napp.main()").run()
+
+        assert not view.exception
+        assert len(view.error) == 1
+        assert "Could not process the uploaded file" in view.error[0].value
+        assert "Deserializing page header failed" in view.error[0].value
+        reader.assert_called_once()
+        assessment.assert_not_called()
+    finally:
+        app.assess_upload.clear()
 
 
 @pytest.mark.parametrize("rejected", [False, True])
