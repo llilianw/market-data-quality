@@ -8,7 +8,11 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from market_quality.config import AppConfig, SessionConfig
-from market_quality.exceptions import SchemaValidationError, UnsupportedFileTypeError
+from market_quality.exceptions import (
+    MarketDataError,
+    SchemaValidationError,
+    UnsupportedFileTypeError,
+)
 from market_quality.models import RuleId
 from market_quality.ui import uploads
 from market_quality.ui.uploads import process_uploaded_data
@@ -40,6 +44,52 @@ def test_upload_adapter_runs_existing_ingestion_and_full_assessment(extension: s
     }
     assert assessment.eligible_data["source_row"].tolist() == [0, 1]
     pd.testing.assert_frame_equal(assessment.scoped_data, assessment.eligible_data)
+
+
+@pytest.mark.parametrize("read_fails", [False, True])
+def test_upload_closes_writer_before_reading_and_cleans_up(
+    monkeypatch: pytest.MonkeyPatch, read_fails: bool
+) -> None:
+    buffer = BytesIO()
+    pd.read_csv(_FIXTURE).to_parquet(buffer, index=False)
+    contents = buffer.getvalue()
+    filename = "original.PARQUET"
+    original_open = Path.open
+    original_reader = uploads.read_market_data
+    writers = []
+    paths = []
+
+    def track_open(path, mode="r", *args, **kwargs):
+        handle = original_open(path, mode, *args, **kwargs)
+        if "w" in mode:
+            writers.append(handle)
+        return handle
+
+    def read_after_close(path):
+        source = Path(path)
+        paths.append(source)
+        assert source.is_file()
+        assert source.suffix == ".PARQUET"
+        assert len(writers) == 1
+        assert writers[0].closed
+        assert source.read_bytes() == contents
+        if read_fails:
+            raise OSError("Parquet data page is corrupt")
+        return original_reader(source)
+
+    monkeypatch.setattr(Path, "open", track_open)
+    monkeypatch.setattr(uploads, "read_market_data", read_after_close)
+
+    if read_fails:
+        with pytest.raises(MarketDataError, match="Could not read Parquet data"):
+            process_uploaded_data(contents, filename, AppConfig())
+    else:
+        canonical, _ = process_uploaded_data(contents, filename, AppConfig())
+        assert canonical.data["source_file"].tolist() == [filename] * 3
+
+    assert len(paths) == 1
+    assert not paths[0].exists()
+    assert not paths[0].parent.exists()
 
 
 def test_upload_preserves_ingestion_issues_and_original_rejected_values() -> None:
@@ -138,6 +188,7 @@ def test_empty_or_fully_rejected_upload_still_returns_assessment(rejected: bool)
     [
         (b"contract\nESZ6\n", "incomplete.csv", SchemaValidationError),
         (b"unsupported", "bars.txt", UnsupportedFileTypeError),
+        (b"not-a-parquet-footer", "broken.parquet", ValueError),
     ],
 )
 def test_expected_domain_errors_propagate_to_the_app(

@@ -1,5 +1,5 @@
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import TemporaryDirectory
 
 from market_quality.config import AppConfig
 from market_quality.exceptions import MarketDataError
@@ -19,11 +19,12 @@ def process_uploaded_data(
     config: AppConfig,
 ) -> tuple[CanonicalizationResult, AnalysisResult]:
     """Adapt uploaded bytes to the path-based reader, retaining original filename lineage."""
-    with NamedTemporaryFile(suffix=Path(filename).suffix) as source:
-        source.write(file_bytes)
-        source.flush()
+    with TemporaryDirectory() as directory:
+        source = Path(directory) / f"upload{Path(filename).suffix}"
+        # Close the writer before the reader reopens the path to avoid Windows file locking.
+        source.write_bytes(file_bytes)
         try:
-            raw = read_market_data(source.name)
+            raw = read_market_data(source)
         except OSError as exc:
             if Path(filename).suffix.lower() != ".parquet":
                 raise

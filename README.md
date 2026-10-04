@@ -31,12 +31,28 @@ findings, gaps, exclusions or insights.
 
 ## Quick start
 
-Python **3.11 or later** is required. From the repository root, using a Python
-3.11 interpreter:
+Python **3.11 or later** is required. From the repository root, create and activate
+the environment using the commands for your platform.
+
+**macOS / Linux**
 
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
+```
+
+**Windows PowerShell**
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+For Windows Command Prompt, use `.venv\Scripts\activate.bat` to activate instead.
+
+Then install and launch on either platform:
+
+```bash
 python -m pip install -e ".[dev]"
 streamlit run app.py
 ```
