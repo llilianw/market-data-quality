@@ -1,3 +1,4 @@
+import pandas as pd
 import streamlit as st
 
 from market_quality.analytics.filtering import filter_analysis_scope
@@ -9,6 +10,7 @@ from market_quality.ingestion.normalize import CanonicalizationResult
 from market_quality.models import GapClassification
 from market_quality.pipeline import AnalysisResult
 from market_quality.ui.analytics import render_analytics
+from market_quality.ui.assessment import render_assessment
 from market_quality.ui.uploads import process_uploaded_data
 
 
@@ -67,12 +69,15 @@ def main() -> None:
             if not canonical.rejected_rows.empty
             else "The uploaded file contains no observations."
         )
-        return
-    eligible = assessment.eligible_data
-    if eligible.empty:
+    elif assessment.eligible_data.empty:
         st.info("No observations are eligible for analytics. Full assessment evidence is retained.")
-        return
+    else:
+        _render_analytics_scope(assessment.eligible_data, config)
 
+    render_assessment(assessment, config)
+
+
+def _render_analytics_scope(eligible: pd.DataFrame, config: AppConfig) -> None:
     st.subheader("Analytics scope")
     contracts = sorted(eligible["contract"].dropna().unique().tolist())
     selected = st.multiselect(

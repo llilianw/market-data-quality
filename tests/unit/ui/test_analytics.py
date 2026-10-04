@@ -76,7 +76,8 @@ def test_chart_selections_use_scoped_results_without_reassessment(
         view.multiselect[0].set_value([]).run()
         assert not view.exception
         assert not view.get("plotly_chart")
-        assert not view.dataframe
+        assert "View daily OHLCV data" not in [expander.label for expander in view.expander]
+        assert "Data Quality" in [section.value for section in view.subheader]
         assert any("No eligible observations match" in message.value for message in view.info)
         assert process.call_count == 1
     finally:
