@@ -8,6 +8,7 @@ from market_quality.exceptions import MarketDataError
 from market_quality.ingestion.normalize import CanonicalizationResult
 from market_quality.models import GapClassification
 from market_quality.pipeline import AnalysisResult
+from market_quality.ui.analytics import render_analytics
 from market_quality.ui.uploads import process_uploaded_data
 
 
@@ -127,6 +128,9 @@ def main() -> None:
         st.info(
             "No eligible observations match this selection. Full assessment evidence is retained."
         )
+        return
+
+    render_analytics(scoped, daily, rolling, config)
 
 
 if __name__ == "__main__":
